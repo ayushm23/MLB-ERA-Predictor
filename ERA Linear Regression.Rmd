@@ -1,0 +1,171 @@
+#####Ayush Mittal
+#####ERA Linear Regression
+
+My goal is to create an effective and accurate predictor of the expected earned run average (ERA) of a Major League Baseball (MLB) starting pitcher based on his seasonal statistics. 
+
+After loading in FanGraphs data from 1990 to 2019, I will drop the columns representing statistics that I do not want to use to predict ERA or columns containing duplicate information. I can also check the data type for each column. 
+
+``` {r}
+filename1 <- "FanGraphs Pitching Stats - Standard.csv"
+dataset1 <- read.csv(filename1, header=TRUE) 
+filename2 <- "FanGraphs Pitching Stats - Advanced.csv"
+dataset2 <- read.csv(filename2, header=TRUE) 
+
+df = merge(dataset1, dataset2)
+
+drops <- c("playerid","SV", "HLD", "BS", "ERA.", "FIP", "FIP.", "xFIP", "xFIP.", "E.F", "SIERA", "LOB.", "K.", "BB.", "K.BB.", "BK", "WP", "CG", "ShO", "G", "GS", "IBB", "W", "L", "R", "ER", "HR", "BB", "HBP", "SO", "K.BB")
+df = df[ , !(names(df) %in% drops)]
+
+sapply(df, class)
+```
+
+For the remaining statistics, I want to evaluate whether a predictive relationship exists between that statistic and ERA, removing the ones that do not. The simplest way to do this is to create a linear model and summarize the results using criteria such as the $R^2$ value, which we want to be high (as close to 1 as possible).
+
+``` {r} 
+lm_ip = lm(df$ERA ~ df$IP) 
+summary(lm_ip) 
+```
+
+The above model is statistically significant with $R^2 = 0.1674$. I will keep this statistic.
+
+``` {r} 
+lm_tbf = lm(df$ERA ~ df$TBF) 
+summary(lm_tbf) 
+```
+
+The above model is statistically significant with $R^2 = 0.03415$. I will remove this statistic.
+
+``` {r} 
+lm_h = lm(df$ERA ~ df$H) 
+summary(lm_h) 
+```
+
+The above model is statistically significant with $R^2 = 0.09603$. I will remove this statistic.
+
+``` {r} 
+lm_k.9 = lm(df$ERA ~ df$K.9) 
+summary(lm_k.9) 
+```
+
+The above model is statistically significant with $R^2 = 0.1542$. I will keep this statistic.
+
+``` {r} 
+lm_bb.9 = lm(df$ERA ~ df$BB.9) 
+summary(lm_bb.9) 
+```
+
+The above model is statistically significant with $R^2 = 0.1153$. I will keep this statistic.
+
+``` {r} 
+lm_hr.9 = lm(df$ERA ~ df$HR.9) 
+summary(lm_hr.9) 
+```
+
+The above model is statistically significant with $R^2 = 0.3869$. I will keep this statistic.
+
+``` {r} 
+lm_avg = lm(df$ERA ~ df$AVG) 
+summary(lm_avg) 
+```
+
+The above model is statistically significant with $R^2 = 0.5761$. I will keep this statistic.
+
+``` {r} 
+lm_whip = lm(df$ERA ~ df$WHIP) 
+summary(lm_whip) 
+```
+
+The above model is statistically significant with $R^2 = 0.6795$. I will keep this statistic.
+
+``` {r} 
+lm_babip = lm(df$ERA ~ df$BABIP) 
+summary(lm_babip) 
+```
+
+The above model is statistically significant with $R^2 = 0.2185$. I will keep this statistic.
+
+``` {r}
+drops2 <- c("TBF", "H")
+df = df[ , !(names(df) %in% drops2)]
+```
+
+Now that I have determined which statistics to use as my independent variables, I want to start using them to predict my dependent variable, $ERA$. To do this, I will use linear regression to create a model that captures the effect of each independent variable. 
+
+``` {r} 
+lm_all = lm(df$ERA ~ df$IP + df$K.9 + df$BB.9 + df$HR.9 + df$AVG + df$WHIP + df$BABIP) 
+summary(lm_all) 
+```
+
+Interestingly, this model, despite an $R^2$ value indicating a strong correlation, is not statistically significant because the p value for $AVG$ is much greater than the ideal $0.05$. I can build a model without $AVG$ and compare to more clearly determine its impact. 
+
+``` {r} 
+lm_all2 = lm(df$ERA ~ df$IP + df$K.9 + df$BB.9 + df$HR.9 + df$WHIP + df$BABIP) 
+summary(lm_all2) 
+```
+
+Now the model is statistically significant with no dropoff in the value of $R^2$. I will continue without $AVG$. 
+
+``` {r}
+drops3 <- c("AVG")
+df = df[ , !(names(df) %in% drops3)]
+```
+
+Before I can officially start making predictions, I want to make sure some of the assumptions for linear regression hold in this scenario.
+
+``` {r}
+mean(lm_all2$residuals)
+```
+
+The mean of the residuals is essentially zero, so this assumption holds.
+
+``` {r}
+par(mfrow=c(2,2))  # set 2 rows and 2 column plot layout
+plot(lm_all2)
+```
+
+The red lines in each graph are approximately flat, indicating homoscedasticity of residuals. This assumption holds.
+
+``` {r}
+acf(lm_all2$residuals)
+```
+
+After time 0, none of the bars exceed the threshold marked by the blue dotted lines, indicating there is no autocorrelation of residuals. This assumption holds.
+
+Now I will begin the process of evaluating the linear model by training on data from 1990 to 2018 and testing on data from 2019. First, I will split the data accordingly. 
+
+``` {r}
+set.seed(100)
+train_df <- df[which(df$Season != 2019),]
+test_df <- df[which(df$Season == 2019),]
+```
+
+Next, I will build a linear model based on the training data, and predict $ERA$ based on the testing data.
+
+``` {r}
+model <- lm(ERA ~ IP + K.9 + BB.9 + HR.9 + WHIP + BABIP, data=train_df)  
+preds <- predict(model, test_df)  
+summary(model) #similar to model above
+```
+
+Below, I have created a dataframe that shows the statistics for each 2019 pitcher alongside the $ERA$ predicted by the linear model. There is also an additional column, $ERA.diff$, that contains the absolute difference between the actual $ERA$ and the predicted $ERA$. This tells me which pitchers significantly overperformed or underperformed. I also observe the correlation between actual and predicted to ensure similar directional movement. 
+
+``` {r}
+compare_df = cbind(test_df, preds)
+compare_df$ERA.diff = compare_df$ERA - compare_df$preds
+head(compare_df)
+cor(compare_df$ERA, compare_df$preds)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
